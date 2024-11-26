@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Nr WebGl Test</title>
+    <script type="text/javascript" src="./three/plugins/gzip/pako.js"></script>
+    <style>
+        body {
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #uiContainer {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            max-height: 100%;
+            overflow-y: auto;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        #uiButtonEnablerContainer {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 80px;
+            max-height: 80px;
+            overflow-y: auto;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+
+        #uiContainer button {
+            width: 100%;
+            margin: 5px 0;
+            padding: 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        #uiButtonEnablerContainer button {
+            width: 100%;
+            margin: 5px 0;
+            padding: 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        #uiContainer button:hover {
+            background-color: #1eb300;
+        }
+
+        #uiButtonEnablerContainer button:hover {
+            background-color: #1eb300;
+        }
+
+        #uiButtonEnablerContainer button::selection {
+            background-color: #b300a4;
+        }
+
+        #uiContainer button::selection {
+            background-color: #b300a4;
+        }
+
+        #WebGL_Output {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./three/build/three.module.js",
+            "three/addons/": "./three/jsm/"
+        }
+    }
+</script>
+    <div id="WebGL_Output"></div>
+    <div id="uiContainer"></div>
+    <div id="uiButtonEnablerContainer"></div>
+
+    <script type="module">
+        import * as THREE from './three/build/three.module.js';
+        import { OrbitControls } from './three/jsm/controls/OrbitControls.js';
+
+        var sceneName = "{FROM}SampleScene{END}";
+        sceneName = sceneName.replace("{FROM}", "").replace("{END}", "");
+        var rootPath = "three/Scenes/" + sceneName;
+
+        var scene = new THREE.Scene();
+        var loader = new THREE.ObjectLoader();
+        var renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.VSMShadowMap;
+        renderer.setPixelRatio(window.devicePixelRatio);
+
+        var camera, controls;
+
+        var loadComplete = false;
+        var uiContainer = document.getElementById('uiContainer');
+        function start() {
+            const button = document.createElement('button');
+            button.textContent = ` View`;
+
+            button.addEventListener('click', () => {
+                if (uiContainer.style.visibility == "hidden") {
+                    uiContainer.style.visibility = 'visible';
+                } else {
+                    uiContainer.style.visibility = 'hidden';
+
+                }
+            });
+            uiButtonEnablerContainer.appendChild(button);
+            uiContainer.style.visibility = 'hidden';
+
+            var num = 0;
+            var fileLoader = new THREE.FileLoader();
+            fileLoader.load(rootPath + "/ExportPackageInfo.json", function (text) {
+                const sceneConfig = JSON.parse(text)
+                for (var i = 0; i < sceneConfig.length; i++) {
+                    const name = sceneConfig[i].name || `UnnamedModel_${i}`;
+                    var compressionType = sceneConfig[i].compressionType;
+                    var url = rootPath + "/Models/" + sceneConfig[i].name;
+                    switch (compressionType) {
+                        case "none":
+                            loader.load(url, function (obj) {
+                                objLoad(obj);
+                            });
+                            break;
+                        case "gzipCompression":
+                            var fileLoader2 = new THREE.FileLoader();
+                            fileLoader2.setResponseType('arraybuffer');
+                            fileLoader2.load(url, function (text) {
+                                var binData = new Uint8Array(text);
+                                var data = pako.inflate(binData, { to: 'string' });
+                                loader.setResourcePath(rootPath + "/Textures/");
+                                loader.parse(JSON.parse(data), function (obj) {
+                                    objLoad(obj, name);
+                                });
+                            })
+                            break;
+                    }
+                }
+
+                function objLoad(obj, name) {
+                    if (sceneConfig[0].sRGBEncoding) {
+                        if (sceneConfig[0].sRGBEncoding != 3001) {
+                            renderer.outputColorSpace = THREE.SRGBColorSpace;
+                        }
+                    } else {
+                        renderer.outputColorSpace = THREE.SRGBColorSpace;
+                    }
+                    scene.add(obj);
+                    if (is3DModel(obj)) {
+                        console.warn(`Model with is in the scene.`);
+                        createModelButton(obj, name);
+
+                    }
+                    if (obj.isScene) {
+                        if (obj.background)
+                            scene.background = obj.background
+                        if (obj.environment)
+                            scene.environment = obj.environment
+                        if (obj.backgroundBlurriness) {
+                            scene.backgroundBlurriness = obj.backgroundBlurriness
+                        }
+                        if (obj.backgroundIntensity) {
+                            scene.backgroundIntensity = obj.backgroundIntensity
+                        }
+                        if (obj.fog)
+                            scene.fog = obj.fog
+                    }
+
+                    initInfo(obj);
+                    update();
+                    num++;
+                    if (num == sceneConfig.length) {
+                        //所有资料加载完毕，执行回调函数
+                        //加载完成后强行渲染一次
+                        if (renderer != null)
+                            renderer.render(scene, camera);
+                        loadComplete = true;
+                        // console.log(scene.getObjectByName("Corset").material)
+                    }
+                }
+                function is3DModel(obj) {
+                    if (obj instanceof THREE.Mesh) {
+                        return true;
+                    }
+
+                    if (obj.children && obj.children.length > 0) {
+                        for (let child of obj.children) {
+                            if (is3DModel(child)) return true;
+                        }
+                    }
+
+                    return false;
+                }
+
+                function createModelButton(model, name) {
+                    const button = document.createElement('button');
+                    button.textContent = `${name} (Hide)`;
+
+                    button.addEventListener('click', () => {
+                        if (scene.getObjectById(model.id)) {
+                            model.visible = !model.visible;
+                            button.textContent = model.visible ? `${name} (Hide)` : `${name} (Show)`;
+
+                            // Trigger a render to update visibility immediately
+                            renderer.render(scene, camera);
+                        } else {
+                            console.warn(`Model with ID ${model.id} is not in the scene.`);
+                        }
+                    });
+
+                    uiContainer.appendChild(button);
+                }
+
+            });
+        }
+
+        var fps = 30;
+        var now;
+        var then = Date.now();
+        var interval = 1000 / fps;
+        var delta;
+
+        //用于记录上帧和当前帧相机的位置
+        var cameraThenPos = new THREE.Vector3(), cameraNowPos = new THREE.Vector3();
+
+        function update() {
+            requestAnimationFrame(update);
+            //渲染优化,1.间隔渲染; 2.判断相机有无运动,无运动则停止渲染
+            now = Date.now();
+            if (camera) {
+                camera.near = 3;
+                camera.far = 1000;
+                camera.updateProjectionMatrix();
+            }
+            delta = now - then;
+            if (delta > interval) {
+                then = now - (delta % interval);
+
+                if (camera != null)
+                    cameraThenPos = camera.position.clone();
+
+                if (camera != null) {
+                    if (cameraNowPos != null || cameraThenPos != null) {
+                        if (cameraNowPos.x != cameraThenPos.x || cameraNowPos.y != cameraThenPos.y || cameraNowPos.z != cameraThenPos.z || !loadComplete) {
+                            if (renderer != null) {
+                                renderer.render(scene, camera);
+                                cameraNowPos = camera.position.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function onResize() {
+            if (camera != null) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.render(scene, camera);
+            }
+        }
+
+        function initInfo(node) {
+            ///相机初始化设置
+            if (node instanceof THREE.PerspectiveCamera) {
+                camera = node;
+                scene.updateMatrixWorld(true);
+                controls = new OrbitControls(camera, renderer.domElement);
+                //判断相机下是否有CameraTarget子物体,CameraTarget用于设置相机初始化聚焦点
+                var cameraTarget = camera.getObjectByName("CameraTarget");
+                if (cameraTarget != null) {
+                    var cameraTargetPosition = new THREE.Vector3();
+                    cameraTargetPosition.setFromMatrixPosition(cameraTarget.matrixWorld);
+                    camera.lookAt(cameraTargetPosition);
+                    controls.target = cameraTargetPosition;
+                }
+                //相机加载完成后刷新
+                onResize();
+                document.getElementById("WebGL_Output").appendChild(renderer.domElement);
+            }
+            if (node instanceof THREE.DirectionalLight) {
+                //设置灯光target物体为子物体
+                var lighTarge = node.getObjectByName("LightTarget");
+                node.target = lighTarge;
+
+                node.castShadow = true;
+                node.shadow.camera.near = 0.1;
+                node.shadow.camera.far = 500;
+                node.shadow.camera.right = 17;
+                node.shadow.camera.left = - 17;
+                node.shadow.camera.top = 17;
+                node.shadow.camera.bottom = - 17;
+                node.shadow.mapSize.width = 512;
+                node.shadow.mapSize.height = 512;
+                node.shadow.radius = 4;
+                node.shadow.bias = - 0.0005;
+            }
+
+            for (var i = 0; i < node.children.length; i++) {
+                initInfo(node.children[i]);
+            }
+        }
+
+        window.onload = start;
+        window.addEventListener("resize", onResize, false);
+    </script>
+</body>
+
+</html>
