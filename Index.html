@@ -286,12 +286,10 @@
         }
 
         function initInfo(node) {
-            ///相机初始化设置
             if (node instanceof THREE.PerspectiveCamera) {
                 camera = node;
                 scene.updateMatrixWorld(true);
                 controls = new OrbitControls(camera, renderer.domElement);
-                //判断相机下是否有CameraTarget子物体,CameraTarget用于设置相机初始化聚焦点
                 var cameraTarget = camera.getObjectByName("CameraTarget");
                 if (cameraTarget != null) {
                     var cameraTargetPosition = new THREE.Vector3();
@@ -299,12 +297,10 @@
                     camera.lookAt(cameraTargetPosition);
                     controls.target = cameraTargetPosition;
                 }
-                //相机加载完成后刷新
                 onResize();
                 document.getElementById("WebGL_Output").appendChild(renderer.domElement);
             }
             if (node instanceof THREE.DirectionalLight) {
-                //设置灯光target物体为子物体
                 var lighTarge = node.getObjectByName("LightTarget");
                 node.target = lighTarge;
 
